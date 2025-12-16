@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Universal Audio Converter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- We use ffmpeg.wasm 0.11.x. 
+         Note: We will configure this to use the SINGLE-THREADED core to avoid SharedArrayBuffer errors 
+         in environments without specific security headers. -->
+    <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
+    <style>
+        /* Custom smooth gradient animation */
+        @keyframes gradient {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        .animate-gradient {
+            background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
+            background-size: 400% 400%;
+            animation: gradient 15s ease infinite;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen flex items-center justify-center font-sans">
+
+    <div class="container mx-auto px-4">
+        <div class="max-w-xl mx-auto bg-gray-800 rounded-2xl shadow-2xl overflow-hidden border border-gray-700">
+            
+            <!-- Header -->
+            <div class="animate-gradient p-8 text-center">
+                <h1 class="text-3xl font-bold mb-2">Audio Alchemy</h1>
+                <p class="text-white/90">Convert audio directly in your browser</p>
+            </div>
+
+            <div class="p-8 space-y-6">
+                
+                <!-- Status Log -->
+                <div id="status" class="hidden bg-gray-900 p-4 rounded-lg font-mono text-sm text-green-400 h-24 overflow-y-auto border border-gray-700">
+                    <p>> Waiting for input...</p>
+                </div>
+
+                <!-- Input Section -->
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-gray-400">1. Select File</label>
+                    <input type="file" id="fileInput" class="block w-full text-sm text-slate-500
+                        file:mr-4 file:py-2 file:px-4
+                        file:rounded-full file:border-0
+                        file:text-sm file:font-semibold
+                        file:bg-blue-600 file:text-white
+                        file:hover:bg-blue-700
+                        cursor-pointer bg-gray-700 rounded-lg"
+                    />
+                </div>
+
+                <!-- Output Format Selection -->
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-gray-400">2. Convert To</label>
+                    <select id="formatSelect" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="ogg">OGG (Vorbis)</option>
+                        <option value="mp3">MP3</option>
+                        <option value="wav">WAV</option>
+                        <option value="aac">AAC</option>
+                        <option value="flac">FLAC</option>
+                        <option value="m4a">M4A</option>
+                        <option value="wma">WMA</option>
+                    </select>
+                </div>
+
+                <!-- Action Button -->
+                <button id="convertBtn" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                    <span id="btnText">Convert Audio</span>
+                    <svg id="spinner" class="animate-spin h-5 w-5 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                </button>
+
+                <!-- Download Section -->
+                <div id="downloadArea" class="hidden pt-4 border-t border-gray-700 text-center">
+                    <p class="text-green-400 mb-3">Conversion Complete!</p>
+                    <a id="downloadLink" href="#" class="inline-block bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-6 rounded-full transition-colors">
+                        Download File
+                    </a>
+                </div>
+
+                <!-- Warning for proprietary formats -->
+                <div class="text-xs text-gray-500 mt-4 text-center">
+                    Note: Supports standard formats (MP3, WAV, OGG, etc.). <br>
+                    Proprietary game files (FSB, BNK) may fail without specific extractors.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createFFmpeg, fetchFile } = FFmpeg;
+        
+        // Initialize FFmpeg with Single-Threaded Core
+        // This fixes the "SharedArrayBuffer is not defined" error in environments
+        // that do not have Cross-Origin-Opener-Policy headers set.
+        const ffmpeg = createFFmpeg({ 
+            log: true,
+            // We explicitly point to the single-threaded core (core-st)
+            corePath: 'https://unpkg.com/@ffmpeg/core-st@0.11.1/dist/ffmpeg-core.js',
+            // 'main' is required for the single-threaded core config
+            mainName: 'main'
+        });
+
+        const fileInput = document.getElementById('fileInput');
+        const formatSelect = document.getElementById('formatSelect');
+        const convertBtn = document.getElementById('convertBtn');
+        const btnText = document.getElementById('btnText');
+        const spinner = document.getElementById('spinner');
+        const statusLog = document.getElementById('status');
+        const downloadArea = document.getElementById('downloadArea');
+        const downloadLink = document.getElementById('downloadLink');
+
+        const log = (message) => {
+            statusLog.classList.remove('hidden');
+            const line = document.createElement('p');
+            line.textContent = `> ${message}`;
+            statusLog.appendChild(line);
+            statusLog.scrollTop = statusLog.scrollHeight;
+        };
+
+        const loadFFmpeg = async () => {
+            if (!ffmpeg.isLoaded()) {
+                log('Loading FFmpeg core (Single Threaded)...');
+                try {
+                    await ffmpeg.load();
+                    log('FFmpeg loaded and ready.');
+                } catch (e) {
+                    log('Error loading FFmpeg. Check console for details.');
+                    console.error(e);
+                }
+            }
+        };
+
+        // Load immediately on page open
+        loadFFmpeg();
+
+        convertBtn.addEventListener('click', async () => {
+            const file = fileInput.files[0];
+            if (!file) {
+                alert('Please select a file first.');
+                return;
+            }
+
+            if (!ffmpeg.isLoaded()) {
+                await loadFFmpeg();
+            }
+
+            // UI Updates
+            convertBtn.disabled = true;
+            btnText.textContent = 'Converting...';
+            spinner.classList.remove('hidden');
+            downloadArea.classList.add('hidden');
+            statusLog.innerHTML = ''; // Clear previous logs
+
+            const targetFormat = formatSelect.value;
+            const inputName = 'input_file';
+            const outputName = `output.${targetFormat}`;
+
+            try {
+                log(`Reading file: ${file.name}`);
+                
+                // Write file to FFmpeg's virtual file system
+                ffmpeg.FS('writeFile', inputName, await fetchFile(file));
+
+                log(`Start conversion to ${targetFormat.toUpperCase()}...`);
+                
+                // Run FFmpeg command
+                // -i input -acodec [codec] output
+                // For mp3 we use libmp3lame, for ogg libvorbis, usually ffmpeg auto-detects based on extension
+                await ffmpeg.run('-i', inputName, outputName);
+
+                log('Conversion finished!');
+
+                // Read result
+                const data = ffmpeg.FS('readFile', outputName);
+
+                // Create download link
+                const blob = new Blob([data.buffer], { type: `audio/${targetFormat}` });
+                const url = URL.createObjectURL(blob);
+
+                downloadLink.href = url;
+                downloadLink.download = `${file.name.split('.')[0]}.${targetFormat}`;
+                
+                downloadArea.classList.remove('hidden');
+                
+                // Cleanup FS to free memory
+                ffmpeg.FS('unlink', inputName);
+                ffmpeg.FS('unlink', outputName);
+
+            } catch (error) {
+                console.error(error);
+                log('Error during conversion. See console for details.');
+                alert('Conversion failed. If this is a proprietary format (like FSB), it might not be supported.');
+            } finally {
+                convertBtn.disabled = false;
+                btnText.textContent = 'Convert Audio';
+                spinner.classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
