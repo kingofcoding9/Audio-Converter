@@ -3,92 +3,203 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Universal Audio Converter</title>
+    <title>Omni-Sound Converter</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- We use ffmpeg.wasm 0.11.x. 
-         Note: We will configure this to use the SINGLE-THREADED core to avoid SharedArrayBuffer errors 
-         in environments without specific security headers. -->
+    <!-- Fonts for the Tech Theme -->
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;700&family=Orbitron:wght@500;700;900&display=swap" rel="stylesheet">
+    
+    <!-- FFmpeg WASM 0.11.x (Single Threaded Config) -->
     <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
-    <style>
-        /* Custom smooth gradient animation */
-        @keyframes gradient {
-            0% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['JetBrains Mono', 'monospace'],
+                        display: ['Orbitron', 'sans-serif'],
+                    },
+                    colors: {
+                        omni: {
+                            dark: '#030712', // Very dark blue/black
+                            panel: '#111827',
+                            cyan: '#06b6d4',
+                            accent: '#22d3ee',
+                        }
+                    }
+                }
+            }
         }
-        .animate-gradient {
-            background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
-            background-size: 400% 400%;
-            animation: gradient 15s ease infinite;
+    </script>
+    <style>
+        body {
+            background-color: #030712;
+            /* Cyberpunk/Tech Grid Background */
+            background-image: 
+                radial-gradient(circle at 50% 0%, rgba(6, 182, 212, 0.15) 0%, transparent 60%),
+                linear-gradient(rgba(34, 211, 238, 0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(34, 211, 238, 0.05) 1px, transparent 1px);
+            background-size: 100% 100%, 50px 50px, 50px 50px;
+        }
+
+        .glass-panel {
+            background: rgba(17, 24, 39, 0.75);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(34, 211, 238, 0.2);
+            box-shadow: 0 0 30px rgba(6, 182, 212, 0.1);
+        }
+
+        .tech-text-shadow {
+            text-shadow: 0 0 10px rgba(34, 211, 238, 0.5);
+        }
+
+        /* Scanline effect */
+        .scanline {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: rgba(34, 211, 238, 0.1);
+            animation: scan 6s linear infinite;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        @keyframes scan {
+            0% { top: -5%; opacity: 0; }
+            5% { opacity: 1; }
+            95% { opacity: 1; }
+            100% { top: 105%; opacity: 0; }
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #111827; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #0e7490; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #22d3ee; 
         }
     </style>
 </head>
-<body class="bg-gray-900 text-white min-h-screen flex items-center justify-center font-sans">
+<body class="text-gray-300 min-h-screen flex flex-col items-center justify-center p-4">
 
-    <div class="container mx-auto px-4">
-        <div class="max-w-xl mx-auto bg-gray-800 rounded-2xl shadow-2xl overflow-hidden border border-gray-700">
+    <!-- Brand Header -->
+    <div class="text-center mb-8 relative z-10">
+        <h1 class="font-display text-4xl md:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500 tech-text-shadow tracking-widest uppercase mb-2">
+            Omni-Sound
+        </h1>
+        <div class="flex items-center justify-center gap-2 text-cyan-500/80 text-xs md:text-sm tracking-[0.3em] font-bold">
+            <span class="w-8 h-[1px] bg-cyan-500/50"></span>
+            ADVANCED AUDIO CONVERTER
+            <span class="w-8 h-[1px] bg-cyan-500/50"></span>
+        </div>
+    </div>
+
+    <!-- Main Interface Panel -->
+    <div class="glass-panel w-full max-w-xl rounded-xl overflow-hidden relative">
+        <!-- Decorative Scanline -->
+        <div class="scanline"></div>
+
+        <!-- Top Bar -->
+        <div class="bg-black/40 px-6 py-3 border-b border-cyan-500/20 flex justify-between items-center">
+            <div class="flex items-center gap-2">
+                <div class="w-3 h-3 rounded-full bg-red-500/80"></div>
+                <div class="w-3 h-3 rounded-full bg-yellow-500/80"></div>
+                <div class="w-3 h-3 rounded-full bg-green-500/80"></div>
+            </div>
+            <div class="text-[10px] text-cyan-400 font-mono">SYS.VER.2.0.5 // ONLINE</div>
+        </div>
+
+        <div class="p-8 space-y-8 relative z-20">
             
-            <!-- Header -->
-            <div class="animate-gradient p-8 text-center">
-                <h1 class="text-3xl font-bold mb-2">Audio Alchemy</h1>
-                <p class="text-white/90">Convert audio directly in your browser</p>
+            <!-- Terminal/Status Log -->
+            <div class="space-y-2">
+                <label class="text-[10px] uppercase tracking-widest text-cyan-500 font-bold">System Log</label>
+                <div id="status" class="bg-black/60 border border-cyan-900/50 rounded p-4 font-mono text-xs text-cyan-300 h-24 overflow-y-auto shadow-inner">
+                    <p class="opacity-70">> Initializing Omni-Sound Core...</p>
+                    <p class="opacity-70">> Waiting for input stream...</p>
+                </div>
             </div>
 
-            <div class="p-8 space-y-6">
-                
-                <!-- Status Log -->
-                <div id="status" class="hidden bg-gray-900 p-4 rounded-lg font-mono text-sm text-green-400 h-24 overflow-y-auto border border-gray-700">
-                    <p>> Waiting for input...</p>
-                </div>
-
+            <div class="grid gap-6">
                 <!-- Input Section -->
-                <div class="space-y-2">
-                    <label class="block text-sm font-medium text-gray-400">1. Select File</label>
-                    <input type="file" id="fileInput" class="block w-full text-sm text-slate-500
-                        file:mr-4 file:py-2 file:px-4
-                        file:rounded-full file:border-0
-                        file:text-sm file:font-semibold
-                        file:bg-blue-600 file:text-white
-                        file:hover:bg-blue-700
-                        cursor-pointer bg-gray-700 rounded-lg"
-                    />
+                <div class="space-y-2 group">
+                    <label class="text-[10px] uppercase tracking-widest text-gray-400 group-hover:text-cyan-400 transition-colors">Source File</label>
+                    <div class="relative">
+                        <input type="file" id="fileInput" class="block w-full text-sm text-gray-400
+                            file:mr-4 file:py-2.5 file:px-6
+                            file:rounded-md file:border-0
+                            file:text-xs file:font-bold file:tracking-wider
+                            file:bg-cyan-900/30 file:text-cyan-400
+                            file:border file:border-cyan-500/30
+                            file:cursor-pointer
+                            hover:file:bg-cyan-500/20 hover:file:text-cyan-300
+                            cursor-pointer bg-black/20 rounded-lg border border-gray-700 focus:border-cyan-500/50 focus:outline-none transition-all"
+                        />
+                    </div>
                 </div>
 
-                <!-- Output Format Selection -->
-                <div class="space-y-2">
-                    <label class="block text-sm font-medium text-gray-400">2. Convert To</label>
-                    <select id="formatSelect" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        <option value="ogg">OGG (Vorbis)</option>
-                        <option value="mp3">MP3</option>
-                        <option value="wav">WAV</option>
-                        <option value="aac">AAC</option>
-                        <option value="flac">FLAC</option>
-                        <option value="m4a">M4A</option>
-                        <option value="wma">WMA</option>
-                    </select>
+                <!-- Format Selection -->
+                <div class="space-y-2 group">
+                    <label class="text-[10px] uppercase tracking-widest text-gray-400 group-hover:text-cyan-400 transition-colors">Target Codec</label>
+                    <div class="relative">
+                        <select id="formatSelect" class="w-full bg-black/20 border border-gray-700 text-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 appearance-none cursor-pointer hover:bg-black/30 transition-all font-mono text-sm">
+                            <option value="ogg">OGG (Vorbis)</option>
+                            <option value="mp3">MP3 (MPEG Layer III)</option>
+                            <option value="wav">WAV (Waveform)</option>
+                            <option value="aac">AAC (Advanced Audio Coding)</option>
+                            <option value="flac">FLAC (Lossless)</option>
+                            <option value="m4a">M4A (MPEG-4 Audio)</option>
+                            <option value="wma">WMA (Windows Media)</option>
+                        </select>
+                        <div class="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-cyan-500">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                            </svg>
+                        </div>
+                    </div>
                 </div>
+            </div>
 
-                <!-- Action Button -->
-                <button id="convertBtn" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
-                    <span id="btnText">Convert Audio</span>
-                    <svg id="spinner" class="animate-spin h-5 w-5 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <!-- Action Button -->
+            <button id="convertBtn" class="w-full relative group overflow-hidden rounded-lg bg-cyan-900/20 border border-cyan-500/50 p-4 transition-all hover:bg-cyan-500/10 hover:border-cyan-400 hover:shadow-[0_0_20px_rgba(6,182,212,0.3)] disabled:opacity-50 disabled:cursor-not-allowed">
+                <div class="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-cyan-500/10 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]"></div>
+                <div class="flex items-center justify-center gap-3 relative z-10">
+                    <span id="btnText" class="font-display font-bold tracking-widest text-cyan-400 group-hover:text-cyan-300 uppercase">Initiate Sequence</span>
+                    <svg id="spinner" class="animate-spin h-5 w-5 text-cyan-400 hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                </button>
-
-                <!-- Download Section -->
-                <div id="downloadArea" class="hidden pt-4 border-t border-gray-700 text-center">
-                    <p class="text-green-400 mb-3">Conversion Complete!</p>
-                    <a id="downloadLink" href="#" class="inline-block bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-6 rounded-full transition-colors">
-                        Download File
-                    </a>
                 </div>
+            </button>
 
-                <!-- Warning for proprietary formats -->
-                <div class="text-xs text-gray-500 mt-4 text-center">
-                    Note: Supports standard formats (MP3, WAV, OGG, etc.). <br>
-                    Proprietary game files (FSB, BNK) may fail without specific extractors.
+            <!-- Download Section -->
+            <div id="downloadArea" class="hidden p-4 bg-cyan-900/10 border border-cyan-500/30 rounded-lg text-center animate-[pulse_3s_ease-in-out_infinite]">
+                <p class="text-cyan-400 text-xs font-bold mb-3 uppercase tracking-wider">Processing Complete</p>
+                <a id="downloadLink" href="#" class="inline-block bg-cyan-500 hover:bg-cyan-400 text-black font-bold font-display uppercase tracking-wider py-2 px-8 rounded clip-path-slant transition-colors">
+                    Download Data
+                </a>
+            </div>
+
+            <!-- Footer/Credits -->
+            <div class="pt-6 border-t border-gray-800 text-center space-y-1">
+                <div class="text-[10px] text-gray-500 tracking-widest uppercase">
+                    Architect: <span class="text-cyan-500/80 font-bold">king_of_coding</span>
+                </div>
+                <div class="text-[10px] text-gray-600 tracking-widest uppercase">
+                    Property of <span class="text-gray-400 font-bold">Omni-Science</span> Corporation
+                </div>
+                <div class="text-[9px] text-gray-700 mt-2">
+                    Note: Proprietary encrypted formats (FSB, BNK) require specific decryption keys not present in this web node.
                 </div>
             </div>
         </div>
@@ -97,14 +208,10 @@
     <script>
         const { createFFmpeg, fetchFile } = FFmpeg;
         
-        // Initialize FFmpeg with Single-Threaded Core
-        // This fixes the "SharedArrayBuffer is not defined" error in environments
-        // that do not have Cross-Origin-Opener-Policy headers set.
+        // Configuration: Single Threaded Core to ensure compatibility without COOP/COEP headers
         const ffmpeg = createFFmpeg({ 
             log: true,
-            // We explicitly point to the single-threaded core (core-st)
             corePath: 'https://unpkg.com/@ffmpeg/core-st@0.11.1/dist/ffmpeg-core.js',
-            // 'main' is required for the single-threaded core config
             mainName: 'main'
         });
 
@@ -120,6 +227,7 @@
         const log = (message) => {
             statusLog.classList.remove('hidden');
             const line = document.createElement('p');
+            line.className = "border-l-2 border-cyan-500/50 pl-2 my-1";
             line.textContent = `> ${message}`;
             statusLog.appendChild(line);
             statusLog.scrollTop = statusLog.scrollHeight;
@@ -127,24 +235,24 @@
 
         const loadFFmpeg = async () => {
             if (!ffmpeg.isLoaded()) {
-                log('Loading FFmpeg core (Single Threaded)...');
+                log('System initializing...');
+                log('Loading Core-ST Module...');
                 try {
                     await ffmpeg.load();
-                    log('FFmpeg loaded and ready.');
+                    log('Omni-Sound Core: ONLINE');
                 } catch (e) {
-                    log('Error loading FFmpeg. Check console for details.');
+                    log('CRITICAL ERROR: Core load failed.');
                     console.error(e);
                 }
             }
         };
 
-        // Load immediately on page open
         loadFFmpeg();
 
         convertBtn.addEventListener('click', async () => {
             const file = fileInput.files[0];
             if (!file) {
-                alert('Please select a file first.');
+                alert('ERROR: No source data selected.');
                 return;
             }
 
@@ -154,53 +262,43 @@
 
             // UI Updates
             convertBtn.disabled = true;
-            btnText.textContent = 'Converting...';
+            btnText.textContent = 'Processing Data...';
             spinner.classList.remove('hidden');
             downloadArea.classList.add('hidden');
-            statusLog.innerHTML = ''; // Clear previous logs
+            statusLog.innerHTML = ''; 
 
             const targetFormat = formatSelect.value;
             const inputName = 'input_file';
             const outputName = `output.${targetFormat}`;
 
             try {
-                log(`Reading file: ${file.name}`);
-                
-                // Write file to FFmpeg's virtual file system
+                log(`Mounting volume: ${file.name}`);
                 ffmpeg.FS('writeFile', inputName, await fetchFile(file));
 
-                log(`Start conversion to ${targetFormat.toUpperCase()}...`);
-                
-                // Run FFmpeg command
-                // -i input -acodec [codec] output
-                // For mp3 we use libmp3lame, for ogg libvorbis, usually ffmpeg auto-detects based on extension
+                log(`Initiating Transcode Protocol: ${targetFormat.toUpperCase()}`);
                 await ffmpeg.run('-i', inputName, outputName);
 
-                log('Conversion finished!');
+                log('Sequence Complete. Generating Link...');
 
-                // Read result
                 const data = ffmpeg.FS('readFile', outputName);
-
-                // Create download link
                 const blob = new Blob([data.buffer], { type: `audio/${targetFormat}` });
                 const url = URL.createObjectURL(blob);
 
                 downloadLink.href = url;
-                downloadLink.download = `${file.name.split('.')[0]}.${targetFormat}`;
+                downloadLink.download = `${file.name.split('.')[0]}_converted.${targetFormat}`;
                 
                 downloadArea.classList.remove('hidden');
                 
-                // Cleanup FS to free memory
                 ffmpeg.FS('unlink', inputName);
                 ffmpeg.FS('unlink', outputName);
 
             } catch (error) {
                 console.error(error);
-                log('Error during conversion. See console for details.');
-                alert('Conversion failed. If this is a proprietary format (like FSB), it might not be supported.');
+                log('FATAL ERROR: Conversion aborted.');
+                alert('Conversion failed. Format may be proprietary or corrupt.');
             } finally {
                 convertBtn.disabled = false;
-                btnText.textContent = 'Convert Audio';
+                btnText.textContent = 'Initiate Sequence';
                 spinner.classList.add('hidden');
             }
         });
